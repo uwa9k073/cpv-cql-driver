@@ -6,15 +6,17 @@ namespace cql {
 	seastar::future<seastar::connected_socket> SSLConnector::connect(
 		const NodeConfiguration&,
 		const seastar::socket_address& address) const {
-		if (CQL_LIKELY(initialized_.available() && !initialized_.failed())) {
-			// fast path
-			return seastar::tls::connect(certificates_, address, "");
-		} else {
-			// slow path
-			return initialized_.get_future().then([c = certificates_, a = address] {
-				return seastar::tls::connect(c, a, "");
-			});
-		}
+		seastar::tls::tls_options opts;
+        if (initialized_.available() && !initialized_.failed()) [[likely]] {
+            // fast path
+            return seastar::tls::connect(certificates_, address, std::move(opts));
+        } else {
+            // slow path
+            // Захватываем opts по значению, так как лямбда выполнится позже
+            return initialized_.get_future().then([c = certificates_, a = address, o = std::move(opts)]() mutable {
+                return seastar::tls::connect(c, a, std::move(o));
+            });
+        }
 	}
 
 	/** Constructor */
@@ -22,4 +24,3 @@ namespace cql {
 		certificates_(seastar::make_shared<seastar::tls::certificate_credentials>()),
 		initialized_(certificates_->set_system_trust()) { }
 }
-

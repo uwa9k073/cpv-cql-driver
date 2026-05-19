@@ -1,7 +1,8 @@
 #pragma once
 #include <ostream>
-#include "./Utility/EnumUtils.hpp"
-#include "./Utility/Macros.hpp"
+#include <CQLDriver/Common/Utility/Macros.hpp>
+#include <fmt/core.h>
+#include <CQLDriver/Common/Utility/EnumUtils.hpp>
 
 namespace cql {
 	/**
@@ -138,4 +139,3 @@ namespace cql {
 		static const char* PasswordAuthenticator = "org.apache.cassandra.auth.PasswordAuthenticator";
 	}
 }
-
