@@ -73,7 +73,16 @@ namespace cql {
 	};
 
 	/** Write text description of enum to stream */
-	template <class T, std::enable_if_t<sizeof(EnumDescriptions<T>::get()), int> = 0>
+	template <class T, class = void>
+	struct has_enum_descriptions : std::false_type {};
+
+	template <class T>
+	struct has_enum_descriptions<T,
+	    std::void_t<decltype(EnumDescriptions<T>::get())>> : std::true_type {};
+
+	template <class T,
+	          std::enable_if_t<std::is_enum<T>::value &&
+	                          has_enum_descriptions<T>::value, int> = 0>
 	std::ostream& operator<<(std::ostream& stream, T value) {
 		auto& descriptions = EnumDescriptions<T>::get();
 		// find the value exactly matched
@@ -101,4 +110,3 @@ namespace cql {
 		return stream;
 	}
 }
-

@@ -1,5 +1,6 @@
 #include <seastar/core/reactor.hh>
 #include <CQLDriver/Common/Logger.hpp>
+#include <seastar/core/shard_id.hh>
 #include "./Loggers/ConsoleLogger.hpp"
 #include "./Loggers/NoopLogger.hpp"
 
@@ -20,7 +21,6 @@ namespace cql {
 
 	/** Get thread id for logging */
 	std::size_t Logger::getThreadId() {
-		return seastar::engine().cpu_id();
+		return seastar::this_shard_id();
 	}
 }
-

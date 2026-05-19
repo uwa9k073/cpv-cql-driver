@@ -1,4 +1,5 @@
 #include <limits>
+#include <seastar/core/future.hh>
 #include <seastar/net/dns.hh>
 #include <seastar/core/reactor.hh>
 #include <CQLDriver/Common/Exceptions/NotImplementedException.hpp>
@@ -28,7 +29,7 @@ namespace cql {
 			return seastar::make_ready_future();
 		}
 		auto self = shared_from_this();
-		return seastar::futurize_apply([self] {
+		return seastar::futurize_invoke([self] {
 			// log connect
 			auto& logger = self->sessionConfiguration_->getLogger();
 			if (logger->isEnabled(LogLevel::Info)) {
@@ -471,4 +472,3 @@ namespace cql {
 		}
 	}
 }
-

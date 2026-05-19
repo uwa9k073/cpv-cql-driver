@@ -31,7 +31,7 @@ namespace cql {
 			return connection->sendMessage(std::move(authResponseMessage), stream);
 		}).then([connection, &stream] {
 			return connection->waitNextMessage(stream);
-		}).then([connection, &stream] (auto message) {
+		}).then([connection] (auto message) {
 			auto opCode = message->getHeader().getOpCode();
 			if (opCode != MessageType::AuthSuccess) {
 				return seastar::make_exception_future(AuthenticateException(
@@ -42,4 +42,3 @@ namespace cql {
 		});
 	}
 }
-

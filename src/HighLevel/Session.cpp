@@ -4,17 +4,19 @@
 #include <CQLDriver/Common/Exceptions/NotImplementedException.hpp>
 #include <CQLDriver/Common/Exceptions/LogicException.hpp>
 #include <CQLDriver/Common/Exceptions/ResponseErrorException.hpp>
-#include "../LowLevel/RequestMessages/RequestMessageFactory.hpp"
-#include "../LowLevel/RequestMessages/QueryMessage.hpp"
-#include "../LowLevel/RequestMessages/ExecuteMessage.hpp"
-#include "../LowLevel/RequestMessages/PrepareMessage.hpp"
-#include "../LowLevel/RequestMessages/BatchMessage.hpp"
-#include "../LowLevel/ResponseMessages/ResultMessage.hpp"
-#include "../LowLevel/ResponseMessages/ErrorMessage.hpp"
-#include "../LowLevel/Connection.hpp"
-#include "../Common/ResultSetData.hpp"
-#include "../Common/BatchQueryData.hpp"
-#include "./SessionData.hpp"
+#include <LowLevel/RequestMessages/RequestMessageFactory.hpp>
+#include <LowLevel/RequestMessages/QueryMessage.hpp>
+#include <LowLevel/RequestMessages/ExecuteMessage.hpp>
+#include <LowLevel/RequestMessages/PrepareMessage.hpp>
+#include <LowLevel/RequestMessages/BatchMessage.hpp>
+#include <LowLevel/ResponseMessages/ResultMessage.hpp>
+#include <LowLevel/ResponseMessages/ErrorMessage.hpp>
+#include <LowLevel/Connection.hpp>
+#include <Common/ResultSetData.hpp>
+#include <Common/BatchQueryData.hpp>
+#include <HighLevel/SessionData.hpp>
+#include <CQLDriver/Common/Utility/StringUtils.hpp>
+#include <CQLDriver/Common/CommonDefinitions.hpp>
 
 namespace cql {
 	namespace {
@@ -45,8 +47,8 @@ namespace cql {
 			}
 
 			/** Handle error message for "query" and "execute" */
-			template <class... Args>
-			seastar::future<Args...> handleErrorMessage(
+			template <class Arg = void>
+			seastar::future<Arg> handleErrorMessage(
 				Reusable<ErrorMessage>&& errorMessage,
 				Command& command,
 				seastar::lw_shared_ptr<Connection>& connection) {
@@ -64,9 +66,9 @@ namespace cql {
 					maxRetries_ = 0;
 				}
 				if (maxRetries_ > 0) {
-					return seastar::make_exception_future<Args...>(RetryException());
+					return seastar::make_exception_future<Arg>(RetryException());
 				} else {
-					return seastar::make_exception_future<Args...>(ResponseErrorException(
+					return seastar::make_exception_future<Arg>(ResponseErrorException(
 						CQL_CODEINFO, joinString("",
 						errorCode, ": ", errorMessage->getErrorMessage().get(),
 						", query: ", command.getQuery())));
@@ -74,8 +76,8 @@ namespace cql {
 			}
 
 			/** Handle error message for "batchExecute" */
-			template <class... Args>
-			seastar::future<Args...> handleErrorMessage(
+			template <class Arg = void>
+			seastar::future<Arg> handleErrorMessage(
 				Reusable<ErrorMessage>&& errorMessage,
 				BatchCommand& command,
 				seastar::lw_shared_ptr<Connection>& connection) {
@@ -95,7 +97,7 @@ namespace cql {
 					maxRetries_ = 0;
 				}
 				if (maxRetries_ > 0) {
-					return seastar::make_exception_future<Args...>(RetryException());
+					return seastar::make_exception_future<Arg>(RetryException());
 				} else {
 					std::string allQueries;
 					for (const auto& query : command.getQueries()) {
@@ -105,7 +107,7 @@ namespace cql {
 					if (!allQueries.empty()) {
 						allQueries.resize(allQueries.size()-1);
 					}
-					return seastar::make_exception_future<Args...>(ResponseErrorException(
+					return seastar::make_exception_future<Arg>(ResponseErrorException(
 						CQL_CODEINFO, joinString("",
 						errorCode, ": ", errorMessage->getErrorMessage().get(),
 						", queries: ", allQueries)));
@@ -113,23 +115,23 @@ namespace cql {
 			}
 
 			/** Handle unexpected message */
-			template <class... Args>
-			seastar::future<Args...> handleUnexpectMessage(
+			template <class Arg = void>
+			seastar::future<Arg> handleUnexpectMessage(
 				Reusable<ResponseMessageBase>&& message,
 				const char* requestType) {
 				maxRetries_ = 0;
-				return seastar::make_exception_future<Args...>(LogicException(
+				return seastar::make_exception_future<Arg>(LogicException(
 					CQL_CODEINFO, "unexpected response to", requestType, "message:",
 					message->toString()));
 			}
 
 			/** Handle unexpected kind in result message */
-			template <class... Args>
-			seastar::future<Args...> handleUnexpectResultKind(
+			template <class Arg = void>
+			seastar::future<Arg> handleUnexpectResultKind(
 				Reusable<ResultMessage>&& resultMessage,
 				const char* requestType) {
 				maxRetries_ = 0;
-				return seastar::make_exception_future<Args...>(LogicException(
+				return seastar::make_exception_future<Arg>(LogicException(
 					CQL_CODEINFO, "unexpected result kind to", requestType, "message:",
 					resultMessage->toString()));
 			}
@@ -399,21 +401,21 @@ namespace cql {
 				&result] {
 				// get connection
 				return connectionPool->getConnection().then(
-					[&connection, &stream] (auto connectionVal, auto streamVal) {
-					connection = std::move(connectionVal);
-					stream = std::move(streamVal);
-				}).then([&command, &retryFlow, &connection, &stream] {
-					// prepare query
-					return prepareQuery(command, retryFlow, connection, stream);
-				}).then([&connection, &stream] (auto message) {
-					// send QUERY or EXECUTE
-					return connection->sendMessage(std::move(message), stream);
-				}).then([&connection, &stream] {
-					// receive RESULT
-					return connection->waitNextMessage(stream);
-				}).then([&command, &retryFlow, &connection, &result] (auto message) {
-					// handle RESULT
-					if (message->getHeader().getOpCode() == MessageType::Result) {
+					[&connection, &stream] (auto connection_stream_pair) {
+						connection = std::move(connection_stream_pair.first);
+						stream = std::move(connection_stream_pair.second);
+					}).then([&command, &retryFlow, &connection, &stream] {
+						// prepare query
+						return prepareQuery(command, retryFlow, connection, stream);
+					}).then([&connection, &stream] (auto message) {
+						// send QUERY or EXECUTE
+						return connection->sendMessage(std::move(message), stream);
+					}).then([&connection, &stream] {
+						// receive RESULT
+						return connection->waitNextMessage(stream);
+					}).then([&command, &retryFlow, &connection, &result] (auto message) {
+						// handle RESULT
+						if (message->getHeader().getOpCode() == MessageType::Result) {
 						auto resultMessage = std::move(message).template cast<ResultMessage>();
 						if (resultMessage->getKind() == ResultKind::Rows) {
 							result = std::move(resultMessage->getResultSet());
@@ -482,10 +484,10 @@ namespace cql {
 				&stream] {
 				// get connection
 				return connectionPool->getConnection().then(
-					[&connection, &stream] (auto connectionVal, auto streamVal) {
-					connection = std::move(connectionVal);
-					stream = std::move(streamVal);
-				}).then([&command, &retryFlow, &connection, &stream] {
+					[&connection, &stream] (auto connection_stream_pair) {
+						connection = std::move(connection_stream_pair.first);
+						stream = std::move(connection_stream_pair.second);
+					}).then([&command, &retryFlow, &connection, &stream] {
 					// prepare query
 					return prepareQuery(command, retryFlow, connection, stream);
 				}).then([&connection, &stream] (auto message) {
@@ -562,10 +564,10 @@ namespace cql {
 				&prepareResults] {
 				// get connection
 				return connectionPool->getConnection().then(
-					[&connection, &stream] (auto connectionVal, auto streamVal) {
-					connection = std::move(connectionVal);
-					stream = std::move(streamVal);
-				}).then([&command, &retryFlow, &connection, &stream, &batchMessage, &prepareResults] {
+					[&connection, &stream] (auto connection_stream_pair) {
+						connection = std::move(connection_stream_pair.first);
+						stream = std::move(connection_stream_pair.second);
+					}).then([&command, &retryFlow, &connection, &stream, &batchMessage, &prepareResults] {
 					// prepare queries
 					batchMessage = RequestMessageFactory::makeRequestMessage<BatchMessage>();
 					batchMessage->getBatchParameters().setBatchCommandRef(command);
@@ -610,4 +612,3 @@ namespace cql {
 	Session::Session(Reusable<SessionData>&& data) :
 		data_(std::move(data)) { }
 }
-

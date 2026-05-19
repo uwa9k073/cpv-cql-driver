@@ -40,7 +40,7 @@ namespace cql {
 	}
 
 	/** Get a connection with idle stream, wait until they are available */
-	seastar::future<seastar::lw_shared_ptr<Connection>, ConnectionStream>
+	seastar::future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>
 		ConnectionPool::getConnection() {
 		// always spawn connection until min pool size is reached
 		auto minPoolSize = sessionConfiguration_->getMinPoolSize();
@@ -56,8 +56,7 @@ namespace cql {
 		// use existing connections
 		auto result = tryGetConnection();
 		if (result.first.get() != nullptr) {
-			return seastar::make_ready_future<
-				seastar::lw_shared_ptr<Connection>, ConnectionStream>(
+			return seastar::make_ready_future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>(
 				result.first, std::move(result.second));
 		}
 		// spawn connection if no connection available until max pool size is reached
@@ -66,8 +65,7 @@ namespace cql {
 		if (CQL_UNLIKELY(poolIsFull && waiters_.size() >=
 			sessionConfiguration_->getMaxWaitersAfterConnectionsExhausted())) {
 			// can't spawn more connection and can't add more waiter
-			return seastar::make_exception_future<
-				seastar::lw_shared_ptr<Connection>, ConnectionStream>(
+			return seastar::make_exception_future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>(
 				ConnectionNotAvailableException(CQL_CODEINFO, "no connections available"));
 		} else {
 			auto future = addWaiter();
@@ -149,13 +147,12 @@ namespace cql {
 	}
 
 	/** Add a new waiter */
-	seastar::future<seastar::lw_shared_ptr<Connection>, ConnectionStream>
+	seastar::future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>
 		ConnectionPool::addWaiter() {
-		seastar::promise<seastar::lw_shared_ptr<Connection>, ConnectionStream> promise;
+		seastar::promise<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>> promise;
 		auto future = promise.get_future();
 		if (CQL_UNLIKELY(!waiters_.push(std::move(promise)))) {
-			return seastar::make_exception_future<
-				seastar::lw_shared_ptr<Connection>, ConnectionStream>(
+			return seastar::make_exception_future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>(
 				LogicException(CQL_CODEINFO, "push connection waiter to queue failed"));
 		}
 		return future;
@@ -259,4 +256,3 @@ namespace cql {
 		});
 	}
 }
-

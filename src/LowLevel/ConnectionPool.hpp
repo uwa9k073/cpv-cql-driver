@@ -25,7 +25,7 @@ namespace cql {
 		std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream> tryGetConnection();
 
 		/** Get a connection with idle stream, wait until they are available */
-		seastar::future<seastar::lw_shared_ptr<Connection>, ConnectionStream> getConnection();
+		seastar::future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>> getConnection();
 
 		/** Return the connection to the pool manually, this is optional */
 		void returnConnection(
@@ -47,7 +47,7 @@ namespace cql {
 		void spawnConnection();
 
 		/** Add a new waiter */
-		seastar::future<seastar::lw_shared_ptr<Connection>, ConnectionStream> addWaiter();
+		seastar::future<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>> addWaiter();
 
 		/** Find idle connection and feed waiters */
 		void feedWaiters();
@@ -67,10 +67,8 @@ namespace cql {
 		seastar::lw_shared_ptr<MetricsData> metricsData_;
 		std::vector<seastar::lw_shared_ptr<Connection>> allConnections_;
 		std::size_t connectingCount_;
-		seastar::queue<seastar::promise<
-			seastar::lw_shared_ptr<Connection>, ConnectionStream>> waiters_;
+		seastar::queue<seastar::promise<std::pair<seastar::lw_shared_ptr<Connection>, ConnectionStream>>> waiters_;
 		bool findIdleConnectionTimerIsRunning_;
 		bool dropIdleConnectionTimerIsRunning_;
 	};
 }
-
